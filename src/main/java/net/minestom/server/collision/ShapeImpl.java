@@ -118,6 +118,7 @@ public record ShapeImpl(CollisionData collisionData, LightData lightData) implem
                 finalResult.collidedShapeY = shapePos.y();
                 finalResult.collidedShapeZ = shapePos.z();
                 finalResult.collidedShape = this;
+                finalResult.collidedBoundingBox = blockSection;
                 hitBlock = true;
             }
         }

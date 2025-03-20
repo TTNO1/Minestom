@@ -82,7 +82,7 @@ final class BlockCollision {
                                              @NotNull Vec velocity, @NotNull Pos entityPosition,
                                              @NotNull Block.Getter getter, boolean singleCollision) {
         // Allocate once and update values
-        SweepResult finalResult = new SweepResult(1 - Vec.EPSILON, 0, 0, 0, null, 0, 0, 0, 0, 0, 0);
+        SweepResult finalResult = new SweepResult(1 - Vec.EPSILON, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, null);
 
         boolean foundCollisionX = false, foundCollisionY = false, foundCollisionZ = false;
 
@@ -91,7 +91,8 @@ final class BlockCollision {
         Point[] collisionShapePositions = new Point[3];
 
         boolean hasCollided = false;
-
+        Vec lastVelocity = velocity;
+        
         // Query faces to get the points needed for collision
         final Vec[] allFaces = calculateFaces(velocity, boundingBox);
         PhysicsResult result = computePhysics(boundingBox, velocity, entityPosition, getter, allFaces, finalResult);
@@ -103,7 +104,25 @@ final class BlockCollision {
             finalResult.normalX = 0;
             finalResult.normalY = 0;
             finalResult.normalZ = 0;
-
+            
+            //if collided horizontally and on ground, check for walkable ledges (stairs,slabs,etc.)
+            if((result.collisionX() || result.collisionZ()) && ((foundCollisionY || result.collisionY()) && velocity.y() < 0)) {
+            	double ledgeHeight = finalResult.collidedShapeY + finalResult.collidedBoundingBox.relativeEnd().y() - finalResult.collidedPositionY;
+            	if(ledgeHeight <= 0.6) {//TODO replace with entity specific value (iron golems, horses, warden, etc.)
+            		SweepResult ledgeFinalResult = new SweepResult(1, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, null);
+                	Vec ledgeUpVelocity = new Vec(0, ledgeHeight, 0);
+                	PhysicsResult ledgeUpResult = computePhysics(boundingBox, ledgeUpVelocity, result.newPosition(), getter, calculateFaces(ledgeUpVelocity, boundingBox), ledgeFinalResult);
+                	if(!ledgeUpResult.collisionY()) {
+                		Vec ledgeOverVelocity = lastVelocity.withY(0).normalize().mul(.001);
+                		PhysicsResult ledgeOverResult = computePhysics(boundingBox, ledgeOverVelocity, ledgeUpResult.newPosition(), getter, calculateFaces(ledgeOverVelocity, boundingBox), ledgeFinalResult);
+                		if(!ledgeOverResult.collisionX() && !ledgeOverResult.collisionZ()) {
+                			result = new PhysicsResult(ledgeOverResult.newPosition(), lastVelocity.withY(0), true, false, result.collisionY(), false, velocity, null, null, null, result.collisionY(), finalResult);
+                		}
+                	}
+            	}
+            }
+            lastVelocity = result.newVelocity();
+            
             if (result.collisionX()) {
                 foundCollisionX = true;
                 collisionShapes[0] = finalResult.collidedShape;
