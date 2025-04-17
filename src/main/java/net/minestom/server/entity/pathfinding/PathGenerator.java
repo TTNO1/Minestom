@@ -13,21 +13,21 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public final class PathGenerator {
-    private static final Comparator<PNode> pNodeComparator = (s1, s2) -> (int) (((s1.g() + s1.h()) - (s2.g() + s2.h())) * 1000);
+    private static final Comparator<PNode> pNodeComparator = (s1, s2) -> (int) (((s1.getCost() + s1.getHeuristic()) - (s2.getCost() + s2.getHeuristic())) * 1000);
 
     public static @NotNull PPath generate(Block.@NotNull Getter getter, @NotNull Pos orgStart, @NotNull Point orgTarget,
                                           double closeDistance, double maxDistance, double pathVariance,
                                           @NotNull BoundingBox boundingBox, boolean isOnGround, @NotNull NodeGenerator generator,
                                           @Nullable Runnable onComplete) {
         final Point start = (!isOnGround && generator.hasGravitySnap())
-                ? orgStart.withY(generator.gravitySnap(getter, orgStart.x(), orgStart.y(), orgStart.z(), boundingBox, 100).orElse(orgStart.y()))
+                ? orgStart.withY(generator.gravitySnap(getter, orgStart, boundingBox, 100).orElse(orgStart.y()))
                 : orgStart;
 
         final Point target = (generator.hasGravitySnap())
-                ? orgTarget.withY(generator.gravitySnap(getter, orgTarget.x(), orgTarget.y(), orgTarget.z(), boundingBox, 100).orElse(orgTarget.y()))
+                ? orgTarget.withY(generator.gravitySnap(getter, orgTarget, boundingBox, 100).orElse(orgTarget.y()))
                 : Pos.fromPoint(orgTarget);
 
-        PPath path = new PPath(maxDistance, pathVariance, onComplete);
+        PPath path = new PPath(maxDistance, pathVariance);
         computePath(getter, start, target, closeDistance, maxDistance, pathVariance, boundingBox, path, generator);
         return path;
     }
@@ -65,19 +65,19 @@ public final class PathGenerator {
             //if (chunk == null) continue;
             //if (!chunk.isLoaded()) continue;
 
-            if (((current.g() + current.h()) - straightDistance) > pathVariance) continue;
+            if (((current.getCost() + current.getHeuristic()) - straightDistance) > pathVariance) continue;
             if (!withinDistance(current, start, maxDistance)) continue;
             if (withinDistance(current, target, closeDistance)) {
                 open.enqueue(current);
                 break;
             }
 
-            if (current.h() < closestDistance) {
-                closestDistance = current.h();
+            if (current.getHeuristic() < closestDistance) {
+                closestDistance = current.getHeuristic();
                 closestFoundNodes = List.of(current);
             }
 
-            Collection<? extends PNode> found = generator.getWalkable(getter, closed, current, target, boundingBox);
+            Collection<PNode> found = generator.getTraversableNodes(current, pStart, target, closed);
             found.forEach(p -> {
                 if (getDistanceSquared(p.x(), p.y(), p.z(), start) <= (maxDistance * maxDistance)) {
                     open.enqueue(p);
@@ -101,9 +101,9 @@ public final class PathGenerator {
             }
         }
 
-        while (current.parent() != null) {
+        while (current.getParent() != null) {
             path.getNodes().add(current);
-            current = current.parent();
+            current = current.getParent();
         }
 
         Collections.reverse(path.getNodes());

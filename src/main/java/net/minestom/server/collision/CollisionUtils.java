@@ -21,25 +21,31 @@ import java.util.function.Function;
 public final class CollisionUtils {
 
     /**
-     * Moves an entity with physics applied (ie checking against blocks)
-     * <p>
-     * Works by getting all the full blocks that an entity could interact with.
-     * All bounding boxes inside the full blocks are checked for collisions with the entity.
-     *
-     * @param entity            the entity to move
-     * @param entityVelocity    the velocity of the entity
-     * @param lastPhysicsResult the last physics result, can be null
-     * @param singleCollision   if the entity should only collide with one block
-     * @return the result of physics simulation
-     */
+	 * Moves an entity with physics applied (ie checking against blocks)
+	 * <p>
+	 * Works by getting all the full blocks that an entity could interact with. All
+	 * bounding boxes inside the full blocks are checked for collisions with the
+	 * entity.
+	 *
+	 * @param entity            the entity to move
+	 * @param entityVelocity    the velocity of the entity
+	 * @param lastPhysicsResult the last physics result, can be null
+	 * @param singleCollision   if the entity should only collide with one block
+	 * @param climbLedges       whether or not to move up ledges like stairs and
+	 *                          slabs (usually true when on ground)
+	 * @param maxLedgeHeight    the maximum ledge height to move up (0.6 for vanilla
+	 *                          players) will not climb if zero or negative
+	 * @return the result of physics simulation
+	 */
     public static PhysicsResult handlePhysics(@NotNull Entity entity, @NotNull Vec entityVelocity,
-                                              @Nullable PhysicsResult lastPhysicsResult, boolean singleCollision) {
+                                              @Nullable PhysicsResult lastPhysicsResult, boolean singleCollision,
+                                              boolean climbLedges, double maxLedgeHeight) {
         final Instance instance = entity.getInstance();
         assert instance != null;
         return handlePhysics(instance, entity.getChunk(),
                 entity.getBoundingBox(),
                 entity.getPosition(), entityVelocity,
-                lastPhysicsResult, singleCollision);
+                lastPhysicsResult, singleCollision, climbLedges, maxLedgeHeight);
     }
 
     /**
@@ -70,60 +76,85 @@ public final class CollisionUtils {
     }
 
     /**
-     * Moves an entity with physics applied (ie checking against blocks)
-     * <p>
-     * Works by getting all the full blocks that an entity could interact with.
-     * All bounding boxes inside the full blocks are checked for collisions with the entity.
-     *
-     * @param entity            the entity to move
-     * @param entityVelocity    the velocity of the entity
-     * @param lastPhysicsResult the last physics result, can be null
-     * @return the result of physics simulation
-     */
+	 * Moves an entity with physics applied (ie checking against blocks)
+	 * <p>
+	 * Works by getting all the full blocks that an entity could interact with. All
+	 * bounding boxes inside the full blocks are checked for collisions with the
+	 * entity.
+	 *
+	 * @param entity            the entity to move
+	 * @param entityVelocity    the velocity of the entity
+	 * @param lastPhysicsResult the last physics result, can be null
+	 * @param climbLedges       whether or not to move up ledges like stairs and
+	 *                          slabs (usually true when on ground)
+	 * @param maxLedgeHeight    the maximum ledge height to move up (0.6 for vanilla
+	 *                          players) will not climb if zero or negative
+	 * @return the result of physics simulation
+	 */
     public static PhysicsResult handlePhysics(@NotNull Entity entity, @NotNull Vec entityVelocity,
-                                              @Nullable PhysicsResult lastPhysicsResult) {
+                                              @Nullable PhysicsResult lastPhysicsResult, boolean climbLedges, double maxLedgeHeight) {
         final Instance instance = entity.getInstance();
         assert instance != null;
         return handlePhysics(instance, entity.getChunk(),
                 entity.getBoundingBox(),
                 entity.getPosition(), entityVelocity,
-                lastPhysicsResult, false);
+                lastPhysicsResult, false, climbLedges, maxLedgeHeight);
     }
 
     /**
-     * Moves bounding box with physics applied (ie checking against blocks)
-     * <p>
-     * Works by getting all the full blocks that a bounding box could interact with.
-     * All bounding boxes inside the full blocks are checked for collisions with the given bounding box.
-     *
-     * @param boundingBox the bounding box to move
-     * @return the result of physics simulation
-     */
+	 * Moves bounding box with physics applied (ie checking against blocks)
+	 * <p>
+	 * Works by getting all the full blocks that a bounding box could interact with.
+	 * All bounding boxes inside the full blocks are checked for collisions with the
+	 * given bounding box.
+	 *
+	 * @param boundingBox     the bounding box to move
+	 * @param singleCollision if true, immediately return after at least one
+	 *                        collision
+	 * @param climbLedges     whether or not to move up ledges like stairs and slabs
+	 *                        (usually true when on ground)
+	 * @param maxLedgeHeight  the maximum ledge height to move up (0.6 for vanilla
+	 *                        players) will not climb if zero or negative
+	 * @return the result of physics simulation
+	 */
     public static PhysicsResult handlePhysics(@NotNull Instance instance, @Nullable Chunk chunk,
                                               @NotNull BoundingBox boundingBox,
                                               @NotNull Pos position, @NotNull Vec velocity,
-                                              @Nullable PhysicsResult lastPhysicsResult, boolean singleCollision) {
+                                              @Nullable PhysicsResult lastPhysicsResult, boolean singleCollision,
+                                              boolean climbLedges, double maxLedgeHeight) {
         final Block.Getter getter = new ChunkCache(instance, chunk != null ? chunk : instance.getChunkAt(position), Block.STONE);
-        return handlePhysics(getter, boundingBox, position, velocity, lastPhysicsResult, singleCollision);
+        return handlePhysics(getter, boundingBox, position, velocity, lastPhysicsResult, singleCollision, climbLedges, maxLedgeHeight);
     }
 
-    /**
-     * Moves bounding box with physics applied (ie checking against blocks)
-     * <p>
-     * Works by getting all the full blocks that a bounding box could interact with.
-     * All bounding boxes inside the full blocks are checked for collisions with the given bounding box.
-     *
-     * @param blockGetter the block getter to check collisions against, ensure block access is synchronized
-     * @return the result of physics simulation
-     */
+	/**
+	 * Moves bounding box with physics applied (ie checking against blocks)
+	 * <p>
+	 * Works by getting all the full blocks that a bounding box could interact with.
+	 * All bounding boxes inside the full blocks are checked for collisions with the
+	 * given bounding box.
+	 *
+	 * @param blockGetter     the block getter to check collisions against, ensure
+	 *                        block access is synchronized
+	 * @param singleCollision if true, immediately return after at least one
+	 *                        collision
+	 * @param climbLedges     whether or not to move up ledges like stairs and slabs
+	 *                        (usually true when on ground)
+	 * @param maxLedgeHeight  the maximum ledge height to move up (0.6 for vanilla
+	 *                        players) will not climb if zero or negative
+	 * @return the result of physics simulation
+	 */
     @ApiStatus.Internal
     public static PhysicsResult handlePhysics(@NotNull Block.Getter blockGetter,
                                               @NotNull BoundingBox boundingBox,
                                               @NotNull Pos position, @NotNull Vec velocity,
-                                              @Nullable PhysicsResult lastPhysicsResult, boolean singleCollision) {
+                                              @Nullable PhysicsResult lastPhysicsResult, boolean singleCollision,
+                                              boolean climbLedges, double maxLedgeHeight) {
+    	if(!climbLedges) {
+    		maxLedgeHeight = -1;
+    	}
         return BlockCollision.handlePhysics(boundingBox,
                 velocity, position,
-                blockGetter, lastPhysicsResult, singleCollision);
+                blockGetter, lastPhysicsResult, singleCollision, maxLedgeHeight);
     }
 
     /**
@@ -143,13 +174,28 @@ public final class CollisionUtils {
         final PhysicsResult result = handlePhysics(instance, chunk,
                 BoundingBox.ZERO,
                 Pos.fromPoint(start), Vec.fromPoint(end.sub(start)),
-                null, false);
+                null, false, false, -1);
 
         return shape.intersectBox(end.sub(result.newPosition()).sub(Vec.EPSILON), BoundingBox.ZERO);
     }
 
-    public static PhysicsResult handlePhysics(@NotNull Entity entity, @NotNull Vec entityVelocity) {
-        return handlePhysics(entity, entityVelocity, null);
+    /**
+	 * Moves bounding box with physics applied (ie checking against blocks)
+	 * <p>
+	 * Works by getting all the full blocks that a bounding box could interact with.
+	 * All bounding boxes inside the full blocks are checked for collisions with the
+	 * given bounding box.
+	 * 
+	 * @param entity         the entity to move
+	 * @param entityVelocity the velocity of the entity
+	 * @param climbLedges    whether or not to move up ledges like stairs and slabs
+	 *                       (usually true when on ground)
+	 * @param maxLedgeHeight the maximum ledge height to move up (0.6 for vanilla
+	 *                       players) will not climb if zero or negative
+	 * @return the result of physics simulation
+	 */
+    public static PhysicsResult handlePhysics(@NotNull Entity entity, @NotNull Vec entityVelocity, boolean climbLedges, double maxLedgeHeight) {
+        return handlePhysics(entity, entityVelocity, null, climbLedges, maxLedgeHeight);
     }
 
     public static Entity canPlaceBlockAt(Instance instance, Point blockPos, Block b) {

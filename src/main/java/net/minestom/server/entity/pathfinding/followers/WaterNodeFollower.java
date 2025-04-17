@@ -59,9 +59,12 @@ public class WaterNodeFollower implements NodeFollower {
         if (Math.min(Math.abs(dy), Math.abs(speedY)) == Math.abs(dy)) {
             speedY = dy;
         }
-
-        final var physicsResult = CollisionUtils.handlePhysics(entity, new Vec(speedX, speedY, speedZ));
-        this.entity.refreshPosition(Pos.fromPoint(physicsResult.newPosition()).withView(yaw, pitch));
+        
+        //climb ledges if staying on ground
+        boolean climbLedges = entity.isOnGround() && speedY <= 0;
+        
+        //final var physicsResult = CollisionUtils.handlePhysics(entity, new Vec(speedX, speedY, speedZ), climbLedges);
+        //this.entity.refreshPosition(Pos.fromPoint(physicsResult.newPosition()).withView(yaw, pitch), false, true, physicsResult.isOnGround());
     }
 
     @Override

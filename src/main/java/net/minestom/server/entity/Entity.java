@@ -1,16 +1,52 @@
 package net.minestom.server.entity;
 
+import java.time.Duration;
+import java.time.temporal.TemporalUnit;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+
+import org.intellij.lang.annotations.MagicConstant;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.UnknownNullability;
+
 import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.event.HoverEvent.ShowEntity;
 import net.kyori.adventure.text.event.HoverEventSource;
-import net.minestom.server.*;
-import net.minestom.server.collision.*;
+import net.minestom.server.MinecraftServer;
+import net.minestom.server.ServerFlag;
+import net.minestom.server.ServerProcess;
+import net.minestom.server.Tickable;
+import net.minestom.server.Viewable;
+import net.minestom.server.collision.Aerodynamics;
+import net.minestom.server.collision.BoundingBox;
+import net.minestom.server.collision.CollisionUtils;
+import net.minestom.server.collision.PhysicsResult;
+import net.minestom.server.collision.PhysicsUtils;
+import net.minestom.server.collision.Shape;
+import net.minestom.server.collision.SweepResult;
 import net.minestom.server.coordinate.CoordConversion;
 import net.minestom.server.coordinate.Point;
 import net.minestom.server.coordinate.Pos;
 import net.minestom.server.coordinate.Vec;
+import net.minestom.server.entity.attribute.Attribute;
 import net.minestom.server.entity.metadata.EntityMeta;
 import net.minestom.server.entity.metadata.LivingEntityMeta;
 import net.minestom.server.entity.metadata.other.ArmorStandMeta;
@@ -18,7 +54,14 @@ import net.minestom.server.event.EventDispatcher;
 import net.minestom.server.event.EventFilter;
 import net.minestom.server.event.EventHandler;
 import net.minestom.server.event.EventNode;
-import net.minestom.server.event.entity.*;
+import net.minestom.server.event.entity.EntityDeathEvent;
+import net.minestom.server.event.entity.EntityDespawnEvent;
+import net.minestom.server.event.entity.EntityPotionAddEvent;
+import net.minestom.server.event.entity.EntityPotionRemoveEvent;
+import net.minestom.server.event.entity.EntitySpawnEvent;
+import net.minestom.server.event.entity.EntityTeleportEvent;
+import net.minestom.server.event.entity.EntityTickEvent;
+import net.minestom.server.event.entity.EntityVelocityEvent;
 import net.minestom.server.event.instance.AddEntityToInstanceEvent;
 import net.minestom.server.event.instance.RemoveEntityFromInstanceEvent;
 import net.minestom.server.event.trait.EntityEvent;
@@ -30,7 +73,17 @@ import net.minestom.server.instance.block.Block;
 import net.minestom.server.instance.block.BlockFace;
 import net.minestom.server.instance.block.BlockHandler;
 import net.minestom.server.network.packet.server.CachedPacket;
-import net.minestom.server.network.packet.server.play.*;
+import net.minestom.server.network.packet.server.play.AttachEntityPacket;
+import net.minestom.server.network.packet.server.play.DestroyEntitiesPacket;
+import net.minestom.server.network.packet.server.play.EntityHeadLookPacket;
+import net.minestom.server.network.packet.server.play.EntityMetaDataPacket;
+import net.minestom.server.network.packet.server.play.EntityPositionAndRotationPacket;
+import net.minestom.server.network.packet.server.play.EntityPositionSyncPacket;
+import net.minestom.server.network.packet.server.play.EntityRotationPacket;
+import net.minestom.server.network.packet.server.play.EntityStatusPacket;
+import net.minestom.server.network.packet.server.play.EntityTeleportPacket;
+import net.minestom.server.network.packet.server.play.EntityVelocityPacket;
+import net.minestom.server.network.packet.server.play.SetPassengersPacket;
 import net.minestom.server.potion.Potion;
 import net.minestom.server.potion.PotionEffect;
 import net.minestom.server.potion.TimedPotion;
@@ -56,22 +109,6 @@ import net.minestom.server.utils.entity.EntityUtils;
 import net.minestom.server.utils.position.PositionUtils;
 import net.minestom.server.utils.time.TimeUnit;
 import net.minestom.server.utils.validate.Check;
-import org.intellij.lang.annotations.MagicConstant;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.UnknownNullability;
-
-import java.time.Duration;
-import java.time.temporal.TemporalUnit;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
-import java.util.function.Predicate;
-import java.util.function.UnaryOperator;
 
 /**
  * Could be a player, a monster, or an object.
@@ -605,18 +642,19 @@ public class Entity implements Viewable, Tickable, Schedulable, Snapshotable, Ev
 
         boolean entityIsPlayer = this instanceof Player;
         boolean entityFlying = entityIsPlayer && ((Player) this).isFlying();
+        double maxLedgeHeight = (this instanceof LivingEntity livingEntity) ? livingEntity.getAttributeValue(Attribute.STEP_HEIGHT) : -1;
         final Block.Getter chunkCache = new ChunkCache(instance, currentChunk, Block.STONE);
         PhysicsResult physicsResult = PhysicsUtils.simulateMovement(position, velocity.div(ServerFlag.SERVER_TICKS_PER_SECOND), boundingBox,
-                instance.getWorldBorder(), chunkCache, aerodynamics, hasNoGravity(), hasPhysics, onGround, entityFlying, previousPhysicsResult);
+                instance.getWorldBorder(), chunkCache, aerodynamics, hasNoGravity(), hasPhysics, onGround, entityFlying, previousPhysicsResult, maxLedgeHeight);
         this.previousPhysicsResult = physicsResult;
 
         Chunk finalChunk = ChunkUtils.retrieve(instance, currentChunk, physicsResult.newPosition());
         if (!ChunkUtils.isLoaded(finalChunk)) return;
 
         velocity = physicsResult.newVelocity().mul(ServerFlag.SERVER_TICKS_PER_SECOND);
-        if (!(this instanceof Player)) {
+        if (!entityIsPlayer) {
             onGround = physicsResult.isOnGround();
-            refreshPosition(physicsResult.newPosition(), true, !SYNCHRONIZE_ONLY_ENTITIES.contains(entityType));
+            refreshPosition(physicsResult.newPosition(), true, !SYNCHRONIZE_ONLY_ENTITIES.contains(entityType), onGround);
         }
     }
 
@@ -1250,12 +1288,13 @@ public class Entity implements Viewable, Tickable, Schedulable, Snapshotable, Ev
      * @param newPosition the new position
      */
     @ApiStatus.Internal
-    public void refreshPosition(@NotNull final Pos newPosition, boolean ignoreView, boolean sendPackets) {
+    public void refreshPosition(@NotNull final Pos newPosition, boolean ignoreView, boolean sendPackets, boolean onGround) {
         final var previousPosition = this.position;
         final Pos position = ignoreView ? previousPosition.withCoord(newPosition) : newPosition;
         if (position.equals(lastSyncedPosition)) return;
         setPositionInternal(position);
         this.previousPosition = previousPosition;
+        this.onGround = onGround;
         if (!position.samePoint(previousPosition)) refreshCoordinate(position);
         if (nextSynchronizationTick <= ticks + 1 || !sendPackets) {
             // The entity will be synchronized at the end of its tick
@@ -1285,13 +1324,18 @@ public class Entity implements Viewable, Tickable, Schedulable, Snapshotable, Ev
             // This is a confusing fix for a confusing issue. If rotation is only sent when the entity actually changes, then spawning an entity
             // on the ground causes the entity not to update its rotation correctly. It works fine if the entity is spawned in the air. Very weird.
             PacketViewableUtils.prepareViewablePacket(chunk, EntityPositionAndRotationPacket.getPacket(getEntityId(), position,
-                    lastSyncedPosition, onGround), this);
+                    lastSyncedPosition, isOnGround()), this);
         } else if (viewChange) {
             PacketViewableUtils.prepareViewablePacket(chunk, new EntityHeadLookPacket(getEntityId(), position.yaw()), this);
             PacketViewableUtils.prepareViewablePacket(chunk, EntityPositionAndRotationPacket.getPacket(getEntityId(), position,
                     lastSyncedPosition, isOnGround()), this);
         }
         this.lastSyncedPosition = position;
+    }
+    
+    @ApiStatus.Internal
+    public void refreshPosition(@NotNull final Pos newPosition, boolean ignoreView, boolean sendPackets) {
+    	refreshPosition(newPosition, ignoreView, sendPackets, isOnGround());
     }
 
     @ApiStatus.Internal

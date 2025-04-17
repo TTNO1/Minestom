@@ -1,84 +1,79 @@
 package net.minestom.server.entity.pathfinding;
 
-import net.minestom.server.coordinate.Point;
-import net.minestom.server.coordinate.Vec;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import net.minestom.server.coordinate.Point;
+import net.minestom.server.coordinate.Vec;
 
 public final class PPath {
-    private final Runnable onComplete;
-    private final List<PNode> nodes = new ArrayList<>();
 
-    private final double pathVariance;
-    private final double maxDistance;
-    private int index = 0;
-    private final AtomicReference<State> state = new AtomicReference<>(State.CALCULATING);
+	private final List<PNode> nodes = new ArrayList<>();
 
-    public Point getNext() {
-        if (index + 1 >= nodes.size()) return null;
-        var current = nodes.get(index + 1);
-        return new Vec(current.x(), current.y(), current.z());
-    }
+	private final double pathVariance;
+	private final double maxDistance;
+	private int index = 0;
+	private volatile State state = State.CALCULATING;
 
-    public void setState(@NotNull PPath.State newState) {
-        state.set(newState);
-    }
+	public Point getNext() {
+		if (index + 1 >= nodes.size()) return null;
+		var current = nodes.get(index + 1);
+		return new Vec(current.x(), current.y(), current.z());
+	}
 
-    public enum State {
-        CALCULATING,
-        FOLLOWING,
-        TERMINATING, TERMINATED, COMPUTED, BEST_EFFORT, INVALID
-    }
+	public void setState(@NotNull PPath.State newState) {
+		state = newState;
+	}
 
-    @NotNull State getState() {
-        return state.get();
-    }
+	public enum State {
+		CALCULATING,
+		FOLLOWING,
+		TERMINATING, TERMINATED, COMPUTED, BEST_EFFORT, INVALID
+	}
 
-    public @NotNull List<PNode> getNodes() {
-        return nodes;
-    }
+	@NotNull State getState() {
+		return state;
+	}
 
-    public PPath(double maxDistance, double pathVariance, Runnable onComplete) {
-        this.onComplete = onComplete;
-        this.maxDistance = maxDistance;
-        this.pathVariance = pathVariance;
-    }
+	public @NotNull List<PNode> getNodes() {
+		return nodes;
+	}
 
-    void runComplete() {
-        if (onComplete != null) onComplete.run();
-    }
+	public PPath(double maxDistance, double pathVariance) {
+		this.maxDistance = maxDistance;
+		this.pathVariance = pathVariance;
+	}
 
-    @Override
-    public @NotNull String toString() {
-        return nodes.toString();
-    }
+	@Override
+	public @NotNull String toString() {
+		return nodes.toString();
+	}
 
-    @Nullable PNode.Type getCurrentType() {
-        if (index >= nodes.size()) return null;
-        var current = nodes.get(index);
-        return current.getType();
-    }
+	@Nullable PNode.Type getCurrentType() {
+		if (index >= nodes.size()) return null;
+		var current = nodes.get(index);
+		return current.getType();
+	}
 
-    @Nullable Point getCurrent() {
-        if (index >= nodes.size()) return null;
-        var current = nodes.get(index);
-        return new Vec(current.x(), current.y(), current.z());
-    }
+	@Nullable Point getCurrent() {
+		if (index >= nodes.size()) return null;
+		var current = nodes.get(index);
+		return new Vec(current.x(), current.y(), current.z());
+	}
 
-    void next() {
-        if (index >= nodes.size()) return;
-        index++;
-    }
+	void next() {
+		if (index >= nodes.size()) return;
+		index++;
+	}
 
-    double maxDistance() {
-        return maxDistance;
-    }
+	double maxDistance() {
+		return maxDistance;
+	}
 
-    double pathVariance() {
-        return pathVariance;
-    }
+	double pathVariance() {
+		return pathVariance;
+	}
 }

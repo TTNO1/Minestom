@@ -9,30 +9,38 @@ import org.jetbrains.annotations.Nullable;
 
 public final class PhysicsUtils {
     /**
-     * Simulate the entity's movement physics
-     * <p>
-     * This is done by first attempting to move the entity forward with the
-     * current velocity passed in. Then adjusting the velocity by applying
-     * air resistance and friction.
-     *
-     * @param entityPosition the current entity position
-     * @param entityVelocityPerTick the current entity velocity in blocks/tick
-     * @param entityBoundingBox the current entity bounding box
-     * @param worldBorder the world border to test bounds against
-     * @param blockGetter the block getter to test block collisions against
-     * @param aerodynamics the current entity aerodynamics
-     * @param entityNoGravity whether the entity has gravity
-     * @param entityHasPhysics whether the entity has physics
-     * @param entityOnGround whether the entity is on the ground
-     * @param entityFlying whether the entity is flying
-     * @param previousPhysicsResult the physics result from the previous simulation or null
-     * @return a {@link PhysicsResult} containing the resulting physics state of this simulation
-     */
+	 * Simulate the entity's movement physics
+	 * <p>
+	 * This is done by first attempting to move the entity forward with the current
+	 * velocity passed in. Then adjusting the velocity by applying air resistance
+	 * and friction.
+	 *
+	 * @param entityPosition        the current entity position
+	 * @param entityVelocityPerTick the current entity velocity in blocks/tick
+	 * @param entityBoundingBox     the current entity bounding box
+	 * @param worldBorder           the world border to test bounds against
+	 * @param blockGetter           the block getter to test block collisions
+	 *                              against
+	 * @param aerodynamics          the current entity aerodynamics
+	 * @param entityNoGravity       whether the entity has gravity
+	 * @param entityHasPhysics      whether the entity has physics
+	 * @param entityOnGround        whether the entity is on the ground
+	 * @param entityFlying          whether the entity is flying
+	 * @param previousPhysicsResult the physics result from the previous simulation
+	 *                              or null
+	 * @param maxLedgeHeight        the maximum ledge height to move up (0.6 for
+	 *                              vanilla players) will not climb if zero or
+	 *                              negative
+	 * @return a {@link PhysicsResult} containing the resulting physics state of
+	 *         this simulation
+	 */
     public static @NotNull PhysicsResult simulateMovement(@NotNull Pos entityPosition, @NotNull Vec entityVelocityPerTick, @NotNull BoundingBox entityBoundingBox,
                                                           @NotNull WorldBorder worldBorder, @NotNull Block.Getter blockGetter, @NotNull Aerodynamics aerodynamics, boolean entityNoGravity,
-                                                          boolean entityHasPhysics, boolean entityOnGround, boolean entityFlying, @Nullable PhysicsResult previousPhysicsResult) {
-        final PhysicsResult physicsResult = entityHasPhysics ?
-                CollisionUtils.handlePhysics(blockGetter, entityBoundingBox, entityPosition, entityVelocityPerTick, previousPhysicsResult, false) :
+                                                          boolean entityHasPhysics, boolean entityOnGround, boolean entityFlying, @Nullable PhysicsResult previousPhysicsResult, double maxLedgeHeight) {
+        //climb ledges if staying on ground
+    	boolean climbLedges = entityOnGround && entityVelocityPerTick.y() <= 0;
+    	final PhysicsResult physicsResult = entityHasPhysics ?
+                CollisionUtils.handlePhysics(blockGetter, entityBoundingBox, entityPosition, entityVelocityPerTick, previousPhysicsResult, false, climbLedges, maxLedgeHeight) :
                 CollisionUtils.blocklessCollision(entityPosition, entityVelocityPerTick);
 
         Pos newPosition = physicsResult.newPosition();

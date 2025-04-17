@@ -1,9 +1,9 @@
 package net.minestom.server.entity.pathfinding.followers;
 
-import net.minestom.server.collision.PhysicsResult;
-import net.minestom.server.coordinate.Point;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import net.minestom.server.coordinate.Point;
 
 public interface NodeFollower {
     /**

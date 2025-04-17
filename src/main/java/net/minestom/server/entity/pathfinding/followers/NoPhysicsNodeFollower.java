@@ -17,6 +17,7 @@ public class NoPhysicsNodeFollower implements NodeFollower {
         this.entity = entity;
     }
 
+    //FIXME documentation is blatantly wrong (2nd line)
     /**
      * Used to move the entity toward {@code direction} in the X and Z axis
      * Gravity is still applied but the entity will not attempt to jump
@@ -50,7 +51,7 @@ public class NoPhysicsNodeFollower implements NodeFollower {
         final float pitch = PositionUtils.getLookPitch(dxLook, dyLook, dzLook);
 
         var newPosition = position.add(speedX, 0, speedZ);
-        this.entity.refreshPosition(newPosition.withView(yaw, pitch));
+        this.entity.refreshPosition(newPosition.withView(yaw, pitch), false, true, entity.isOnGround() && dy <= 0);
     }
 
     @Override

@@ -6,14 +6,16 @@ import net.minestom.server.coordinate.Vec;
 
 final class RayUtils {
     /**
-     * Check if a bounding box intersects a ray
-     *
-     * @param rayStart         Ray start position
-     * @param rayDirection     Ray to check
-     * @param collidableStatic Bounding box
-     * @param finalResult
-     * @return true if an intersection between the ray and the bounding box was found
-     */
+	 * Check if a bounding box moving along a ray intersects a stationary bounding
+	 * box
+	 *
+	 * @param moving           The moving bounding box (i.e. entity)
+	 * @param rayStart         Ray start position (start position of {@code moving})
+	 * @param rayDirection     The direction of the ray (velocity of {@code moving})
+	 * @param collidableStatic The stationary bounding box (i.e. block)
+	 * @param finalResult
+	 * @return true if an intersection between the bounding boxes was found
+	 */
     public static boolean BoundingBoxIntersectionCheck(BoundingBox moving, Point rayStart, Point rayDirection, BoundingBox collidableStatic, Point staticCollidableOffset, SweepResult finalResult) {
         Point bbCentre = new Vec(moving.minX() + moving.width() / 2, moving.minY() + moving.height() / 2, moving.minZ() + moving.depth() / 2);
         Point rayCentre = rayStart.add(bbCentre);

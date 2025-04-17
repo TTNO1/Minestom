@@ -553,11 +553,6 @@ public class Player extends LivingEntity implements CommandSender, HoverEventSou
     }
 
     @Override
-    public boolean isOnGround() {
-        return onGround;
-    }
-
-    @Override
     public void remove(boolean permanent) {
         if (isRemoved()) return;
 

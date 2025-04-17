@@ -1,5 +1,12 @@
 package net.minestom.server.entity.pathfinding;
 
+import java.util.List;
+import java.util.function.Supplier;
+
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import net.minestom.server.collision.BoundingBox;
 import net.minestom.server.coordinate.Point;
 import net.minestom.server.coordinate.Pos;
@@ -8,6 +15,7 @@ import net.minestom.server.entity.LivingEntity;
 import net.minestom.server.entity.pathfinding.followers.GroundNodeFollower;
 import net.minestom.server.entity.pathfinding.followers.NodeFollower;
 import net.minestom.server.entity.pathfinding.generators.GroundNodeGenerator;
+import net.minestom.server.entity.pathfinding.generators.JPSGroundNodeGenerator;
 import net.minestom.server.entity.pathfinding.generators.NodeGenerator;
 import net.minestom.server.instance.Chunk;
 import net.minestom.server.instance.Instance;
@@ -15,12 +23,6 @@ import net.minestom.server.instance.WorldBorder;
 import net.minestom.server.network.packet.server.play.ParticlePacket;
 import net.minestom.server.particle.Particle;
 import net.minestom.server.utils.chunk.ChunkUtils;
-import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
-import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * Necessary object for all {@link NavigableEntity}.
@@ -35,12 +37,14 @@ public final class Navigator {
 
     private double minimumDistance;
 
-    NodeGenerator nodeGenerator = new GroundNodeGenerator();
+    NodeGenerator nodeGenerator;
     private NodeFollower nodeFollower;
 
     public Navigator(@NotNull Entity entity) {
         this.entity = entity;
         nodeFollower = new GroundNodeFollower(entity);
+        //nodeGenerator = new JPSGroundNodeGenerator(entity, 8, 0.6, 1, 50, 20, (p, bb, g) -> {return 0;});
+        nodeGenerator = new GroundNodeGenerator(entity, 8, 0.6, 1, (p, bb, g) -> {return 0;});
     }
 
     public @NotNull PPath.State getState() {
@@ -105,7 +109,7 @@ public final class Navigator {
         }
 
         if (this.computingPath != null) this.computingPath.setState(PPath.State.TERMINATING);
-
+        long beforeTime = System.nanoTime();
         this.computingPath = PathGenerator.generate(instance,
                 this.entity.getPosition(),
                 point,
@@ -115,6 +119,8 @@ public final class Navigator {
                 this.entity.isOnGround(),
                 this.nodeGenerator,
                 onComplete);
+        long duration = System.nanoTime() - beforeTime;
+        System.out.println("Pathing Time: " + duration/1000 + " microseconds");
 
         this.goalPosition = point;
         return true;
@@ -149,7 +155,7 @@ public final class Navigator {
 
         // If we're near the entity, we're done
         if (this.entity.getPosition().distance(goalPosition) < minimumDistance) {
-            path.runComplete();
+            //path.runComplete();
             path = null;
 
             return;
@@ -177,7 +183,7 @@ public final class Navigator {
         }
 
         boolean nextIsRepath = nextTarget.sameBlock(Pos.ZERO);
-        nodeFollower.moveTowards(currentTarget, nodeFollower.movementSpeed(), nextIsRepath ? currentTarget : nextTarget);
+        nodeFollower.moveTowards(currentTarget, nodeFollower.movementSpeed(), currentTarget);
 
         if (nodeFollower.isAtPoint(currentTarget)) path.next();
         else if (path.getCurrentType() == PNode.Type.JUMP) nodeFollower.jump(currentTarget, nextTarget);

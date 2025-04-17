@@ -13,16 +13,22 @@ import org.jetbrains.annotations.Nullable;
 
 final class BlockCollision {
     /**
-     * Moves an entity with physics applied (ie checking against blocks)
-     * <p>
-     * Works by getting all the full blocks that an entity could interact with.
-     * All bounding boxes inside the full blocks are checked for collisions with the entity.
-     */
+	 * Moves an entity with physics applied (ie checking against blocks)
+	 * <p>
+	 * Works by getting all the full blocks that an entity could interact with. All
+	 * bounding boxes inside the full blocks are checked for collisions with the
+	 * entity.
+	 * 
+	 * @param singleCollision if true, immediately return after at least one
+	 *                        collision
+	 * @param maxLedgeHeight  the maximum ledge height to move up (0.6 for vanilla
+	 *                        players) set to negative or zero to not climb any ledges
+	 */
     static PhysicsResult handlePhysics(@NotNull BoundingBox boundingBox,
                                        @NotNull Vec velocity, @NotNull Pos entityPosition,
                                        @NotNull Block.Getter getter,
                                        @Nullable PhysicsResult lastPhysicsResult,
-                                       boolean singleCollision) {
+                                       boolean singleCollision, double maxLedgeHeight) {
         if (velocity.isZero()) {
             // TODO should return a constant
             return new PhysicsResult(entityPosition, Vec.ZERO, false, false, false, false,
@@ -34,7 +40,7 @@ final class BlockCollision {
             return cachedResult;
         }
         // Expensive AABB computation
-        return stepPhysics(boundingBox, velocity, entityPosition, getter, singleCollision);
+        return stepPhysics(boundingBox, velocity, entityPosition, getter, singleCollision, maxLedgeHeight);
     }
 
     static Entity canPlaceBlockAt(Instance instance, Point blockPos, Block b) {
@@ -78,9 +84,32 @@ final class BlockCollision {
         return null;
     }
 
+    /**
+	 * <p>
+	 * Repeatedly calls {@linkplain #computePhysics()} until the entire velocity has
+	 * been moved or collisions have occurred on all axes (and the velocity becomes
+	 * zero). If, however, {@code singleCollision} is true, then this method will
+	 * return after it finds at least one collision or after the entire velocity has
+	 * been moved if it finds no collisions.
+	 * </p>
+	 * <p>
+	 * Note: if {@code climbLedges} is true, then colliding with a climbable ledge
+	 * will not count as a collision in the returned {@linkplain PhysicsResult}
+	 * </p>
+	 * 
+	 * @param boundingBox
+	 * @param velocity
+	 * @param entityPosition
+	 * @param getter
+	 * @param singleCollision if true, immediately return after at least one
+	 *                        collision
+	 * @param maxLedgeHeight  the maximum ledge height to move up (0.6 for vanilla
+	 *                        players) set to negative or zero to not climb any ledges
+	 * @return
+	 */
     private static PhysicsResult stepPhysics(@NotNull BoundingBox boundingBox,
                                              @NotNull Vec velocity, @NotNull Pos entityPosition,
-                                             @NotNull Block.Getter getter, boolean singleCollision) {
+                                             @NotNull Block.Getter getter, boolean singleCollision, double maxLedgeHeight) {
         // Allocate once and update values
         SweepResult finalResult = new SweepResult(1 - Vec.EPSILON, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, null);
 
@@ -91,6 +120,9 @@ final class BlockCollision {
         Point[] collisionShapePositions = new Point[3];
 
         boolean hasCollided = false;
+        
+        boolean climbLedges = maxLedgeHeight > 0;
+        // Used to restore the previous velocity if a collision results in a ledge climb
         Vec lastVelocity = velocity;
         
         // Query faces to get the points needed for collision
@@ -105,22 +137,28 @@ final class BlockCollision {
             finalResult.normalY = 0;
             finalResult.normalZ = 0;
             
-            //if collided horizontally and on ground, check for walkable ledges (stairs,slabs,etc.)
-            if((result.collisionX() || result.collisionZ()) && ((foundCollisionY || result.collisionY()) && velocity.y() < 0)) {
+            //if collided horizontally, check for walkable ledges (stairs,slabs,etc.)
+            if(climbLedges && (result.collisionX() || result.collisionZ())) {
+            	
             	double ledgeHeight = finalResult.collidedShapeY + finalResult.collidedBoundingBox.relativeEnd().y() - finalResult.collidedPositionY;
-            	if(ledgeHeight <= 0.6) {//TODO replace with entity specific value (iron golems, horses, warden, etc.)
-            		SweepResult ledgeFinalResult = new SweepResult(1, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, null);
-                	Vec ledgeUpVelocity = new Vec(0, ledgeHeight, 0);
+            	//if ledgeHeight is small enough, check for collisions moving up and over onto ledge
+            	if(ledgeHeight <= maxLedgeHeight) {
+            		SweepResult ledgeFinalResult = new SweepResult(1 - Vec.EPSILON, 0, 0, 0, null, 0, 0, 0, 0, 0, 0, null);
+                	//Add arbitrary small amount 0.0001 to get over ledge otherwise horizontal movement (ledgeOverVelocity) will collide
+            		Vec ledgeUpVelocity = new Vec(0, ledgeHeight + 0.0001, 0);
                 	PhysicsResult ledgeUpResult = computePhysics(boundingBox, ledgeUpVelocity, result.newPosition(), getter, calculateFaces(ledgeUpVelocity, boundingBox), ledgeFinalResult);
                 	if(!ledgeUpResult.collisionY()) {
-                		Vec ledgeOverVelocity = lastVelocity.withY(0).normalize().mul(.001);
+                		//Move over arbitrary small amount 0.0001 to get onto ledge
+                		Vec ledgeOverVelocity = lastVelocity.withY(0).normalize().mul(0.0001);
                 		PhysicsResult ledgeOverResult = computePhysics(boundingBox, ledgeOverVelocity, ledgeUpResult.newPosition(), getter, calculateFaces(ledgeOverVelocity, boundingBox), ledgeFinalResult);
                 		if(!ledgeOverResult.collisionX() && !ledgeOverResult.collisionZ()) {
-                			result = new PhysicsResult(ledgeOverResult.newPosition(), lastVelocity.withY(0), true, false, result.collisionY(), false, velocity, null, null, null, result.collisionY(), finalResult);
+                			result = new PhysicsResult(ledgeOverResult.newPosition(), lastVelocity, true, false, result.collisionY(), false, velocity, null, null, null, result.collisionY(), finalResult);
                 		}
                 	}
             	}
+            	
             }
+            
             lastVelocity = result.newVelocity();
             
             if (result.collisionX()) {
@@ -166,6 +204,12 @@ final class BlockCollision {
                 foundCollisionX, foundCollisionY, foundCollisionZ, velocity, collidedPoints, collisionShapes, collisionShapePositions, hasCollided, finalResult);
     }
 
+    /**
+	 * Moves the bounding box along the velocity until it finds at least one
+	 * collision or the velocity is fully traversed. When either of theses
+	 * conditions are met, the method returns a {@linkplain PhysicsResult} with the
+	 * updated information.
+	 */
     private static PhysicsResult computePhysics(@NotNull BoundingBox boundingBox,
                                                 @NotNull Vec velocity, Pos entityPosition,
                                                 @NotNull Block.Getter getter,
@@ -203,7 +247,7 @@ final class BlockCollision {
                 Vec.ZERO, null, null, null, false, finalResult);
     }
 
-    private static boolean isDiagonal(Vec velocity) {
+    private static boolean isDiagonal(Vec velocity) {//TODO this doesn't seem right
         return Math.abs(velocity.x()) == 1 && Math.abs(velocity.z()) == 1;
     }
 
@@ -214,8 +258,10 @@ final class BlockCollision {
                                     @NotNull SweepResult finalResult) {
         BlockIterator iterator = new BlockIterator();
         // When large moves are done we need to ray-cast to find all blocks that could intersect with the movement
-        for (Vec point : allFaces) {
-            iterator.reset(Vec.fromPoint(point.add(entityPosition)), velocity, 0, velocity.length(), false);
+        for (int i = allFaces.length - 1; i >= 0; i--) {// Iterate in reverse so that equal collisions favor highest y-level in finalResult for use in ledge calculations
+        	Vec point = allFaces[i];
+        	
+            iterator.reset(point.add(entityPosition), velocity, 0, velocity.length(), false);
             int timer = -1;
 
             while (iterator.hasNext() && timer != 0) {
@@ -227,6 +273,7 @@ final class BlockCollision {
 
                 timer--;
             }
+            
         }
     }
 
@@ -235,7 +282,9 @@ final class BlockCollision {
                                     @NotNull Block.Getter getter,
                                     @NotNull Vec[] allFaces,
                                     @NotNull SweepResult finalResult) {
-        for (Vec point : allFaces) {
+        for (int i = allFaces.length - 1; i >= 0; i--) {// Iterate in reverse so that equal collisions favor highest y-level in finalResult for use in ledge calculations
+        	Vec point = allFaces[i];
+        	
             final Vec pointBefore = point.add(entityPosition);
             final Vec pointAfter = point.add(entityPosition).add(velocity);
             // Entity can pass through up to 4 blocks. Starting block, Two intermediate blocks, and a final block.

@@ -82,13 +82,13 @@ public class PlayerPositionListener {
         final Pos eventPosition = playerMoveEvent.getNewPosition();
         if (packetPosition.equals(eventPosition)) {
             // Event didn't change the position
-            player.refreshPosition(eventPosition);
+            player.refreshPosition(eventPosition, false, true, onGround);
             player.refreshOnGround(onGround);
         } else {
             // Position modified by the event
             if (packetPosition.samePoint(eventPosition)) {
-                player.refreshPosition(eventPosition, true);
-                player.refreshOnGround(onGround);
+            	player.refreshPosition(eventPosition, true, true, onGround);
+            	player.refreshOnGround(onGround);
                 player.setView(eventPosition.yaw(), eventPosition.pitch());
             } else {
                 player.teleport(eventPosition);
