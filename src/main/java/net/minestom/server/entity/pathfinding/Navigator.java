@@ -14,7 +14,6 @@ import net.minestom.server.entity.Entity;
 import net.minestom.server.entity.LivingEntity;
 import net.minestom.server.entity.pathfinding.followers.GroundNodeFollower;
 import net.minestom.server.entity.pathfinding.followers.NodeFollower;
-import net.minestom.server.entity.pathfinding.generators.GroundNodeGenerator;
 import net.minestom.server.entity.pathfinding.generators.JPSGroundNodeGenerator;
 import net.minestom.server.entity.pathfinding.generators.NodeGenerator;
 import net.minestom.server.instance.Chunk;
@@ -43,8 +42,8 @@ public final class Navigator {
     public Navigator(@NotNull Entity entity) {
         this.entity = entity;
         nodeFollower = new GroundNodeFollower(entity);
-        //nodeGenerator = new JPSGroundNodeGenerator(entity, 8, 0.6, 1, 50, 20, (p, bb, g) -> {return 0;});
-        nodeGenerator = new GroundNodeGenerator(entity, 8, 0.6, 1, (p, bb, g) -> {return 0;});
+        nodeGenerator = new JPSGroundNodeGenerator(entity, 8, 0.6, 1, 50, 20, (p, bb, g) -> {return 0;});
+        //nodeGenerator = new GroundNodeGenerator(entity, 8, 0.6, 1, (p, bb, g) -> {return 0;});
     }
 
     public @NotNull PPath.State getState() {

@@ -23,6 +23,7 @@ import net.minestom.server.instance.block.Block.Getter;
  * A node generator that generates nodes for entities that walk on the ground.<br>
  * This generator uses the standard A* algorithm.
  */
+//TODO use y coord as well to make jumps more expensive
 public class GroundNodeGenerator implements NodeGenerator {
 
 	private final static double SQRT_2 = Math.sqrt(2);
@@ -57,7 +58,7 @@ public class GroundNodeGenerator implements NodeGenerator {
 	}
 	
 	@Override
-	public @NotNull Collection<PNode> getTraversableNodes(@NotNull PNode currentNode, @NotNull PNode start, @NotNull Point goal, @NotNull Set<PNode> visited) {
+	public @NotNull Collection<PNode> getTraversableNodes(@NotNull PNode currentNode, @NotNull PNode start, @NotNull Point goal, @NotNull Set<Point> visited) {
 		
 		final Getter getter = entity.getInstance();
 		final BoundingBox boundingBox = entity.getBoundingBox();
@@ -68,18 +69,27 @@ public class GroundNodeGenerator implements NodeGenerator {
 		// walk through openings of their own size and not fall through holes of their own size
 		final double increment = Math.ceil(Math.max(boundingBox.width(), boundingBox.depth())) % 2 == 0 ? 0.5 : 1;
 		
+		Point currentPoint = currentNode.getPoint();
+		
 		//Loop through all potential neighboring node x-z coordinates
 		for (double x = -increment; x <= increment; x += increment) {
 			for (double z = -increment; z <= increment; z += increment) {
 				
 				if (x == 0 && z == 0) continue;
 				
-				//Quickly get the cost without doing a square root
-				double cost = ((x == 0 || z == 0 ? 1 : SQRT_2) * increment) + currentNode.getCost();
+				//Assume no change in y to potentially avoid doing a square root
+				//If change in y, cost will be recomputed later
+				double stepCost = ((x == 0 || z == 0 ? 1 : SQRT_2) * increment);
 				
-				Point currentPoint = currentNode.getPoint();
 				//TODO make sure the first point is on a smooth coord
 				Point point = currentPoint.add(x, 0, z);
+				
+				//We can ignore the point if it has already been expanded since the heuristic is consistent
+				// This is an optimization that assumes it is not possible to jump or climb in
+				// this direction if it has already been expanded
+				if(visited.contains(point)) {
+					continue;
+				}
 				
 				//Use CollisionUtils to check if the entity can move to the new point without hitting anything
 				Vec horizontalVelocity = Vec.fromPoint(point.sub(currentPoint));
@@ -89,41 +99,49 @@ public class GroundNodeGenerator implements NodeGenerator {
 				double newY = horizontalResult.newPosition().y();
 				
 				if(canMoveHorizontally) {
-					OptionalDouble optionalY;
 					//if equal, horizontal move was normal, else there was a ledge that was walked up
 					if(newY == point.y()) {
 						//Make sure that we can stand on the ground (i.e. we didn't walk off a cliff)
-						optionalY = gravitySnap(getter, point, boundingBox, maxFallHeight);
+						OptionalDouble optionalY = gravitySnap(getter, point, boundingBox, maxFallHeight);
+						if(optionalY.isEmpty()) {//Will be empty if there was no ground to stand on
+							continue;
+						}
+						//If the gravity snap y-coordinate is the same as the point y, keep the original y-coordinate
+						//We use BIG_EPSILON because collision calculations can have big floating-point error
+						newY = Math.abs(optionalY.getAsDouble() - point.y()) <= BIG_EPSILON ? point.y() : optionalY.getAsDouble();
 					} else {
-						optionalY = OptionalDouble.of(newY);
+						//Recompute cost with added y change
+						double yChange = newY - point.y();
+						stepCost = Math.sqrt((stepCost * stepCost) + (yChange * yChange));
 					}
-					if(optionalY.isEmpty()) {//Will be empty if there was no ground to stand on
+					Point nodePoint = point.withY(newY);
+					Type type = nodePoint.y() < point.y() ? Type.FALL : Type.WALK;
+					PNode node = new PNode(nodePoint, currentNode.getCost() + stepCost, xzDistance(nodePoint, goal), type, currentNode);
+					//TODO LEFT OFF: contains will not work because PNode equals compares cost
+					if(visited.contains(node)) {//We can ignore the node if it has already been expanded since the heuristic is consistent
 						continue;
 					}
-					//If the gravity snap y-coordinate is the same as the point y, keep the original y-coordinate
-					//We use BIG_EPSILON because collision calculations can have big floating-point error
-					Point nodePoint = Math.abs(optionalY.getAsDouble() - point.y()) <= BIG_EPSILON ? point : point.withY(optionalY.getAsDouble());
 					// Get cost offset after we validate physics so that we are not sending invalid
 					// locations into cost supplier
 					double costOffset = costSupplier.getCostOffset(nodePoint, boundingBox, getter);
 					if(costOffset < 0) {//Indicates an invalid block according to the cost supplier
 						continue;
 					}
-					Type type = nodePoint.y() < point.y() ? Type.FALL : Type.WALK;
-					PNode node = new PNode(nodePoint, cost + costOffset, xzDistance(nodePoint, goal), type, currentNode);
-					if(!visited.contains(node)) {//We can ignore the node if it has already been expanded since the heuristic is consistent
-						neighbors.add(node);
-					}
+					node.setCost(node.getCost() + costOffset);
+					neighbors.add(node);
 				} else if(canJump) {// Try to jump
 					//Check for ground to stand on at a higher point that we might be able to jump to
 					OptionalDouble jumpOptionalY = gravitySnap(getter, point.withY(point.y() + maxJumpHeight), boundingBox, maxJumpHeight);
 					// Second part of OR is to make sure the jump point is not at same y-coordinate as the
 					// initial point; we use BIG_EPSILON in case of floating point error in collision calculations
-					if(jumpOptionalY.isEmpty() || jumpOptionalY.getAsDouble() - point.y() <= BIG_EPSILON) {
+					if(jumpOptionalY.isEmpty() || Math.abs(jumpOptionalY.getAsDouble() - point.y()) <= BIG_EPSILON) {
 						continue;
 					}
 					Point jumpPoint = point.withY(jumpOptionalY.getAsDouble());
-					PNode jumpNode = new PNode(jumpPoint, cost, xzDistance(jumpPoint, goal), Type.JUMP, currentNode);
+					//Recompute cost with added y change
+					double yChange = jumpPoint.y() - point.y();
+					stepCost = Math.sqrt((stepCost * stepCost) + (yChange * yChange));
+					PNode jumpNode = new PNode(jumpPoint, currentNode.getCost() + stepCost, xzDistance(jumpPoint, goal), Type.JUMP, currentNode);
 					if(visited.contains(jumpNode)) {//We can ignore the node if it has already been expanded since the heuristic is consistent
 						continue;
 					}
@@ -145,7 +163,7 @@ public class GroundNodeGenerator implements NodeGenerator {
 					if(costOffset < 0) {//Indicates an invalid block according to the cost supplier
 						continue;
 					}
-					jumpNode.setCost(cost + costOffset);
+					jumpNode.setCost(jumpNode.getCost() + costOffset);
 					neighbors.add(jumpNode);
 				}
 				
@@ -154,16 +172,8 @@ public class GroundNodeGenerator implements NodeGenerator {
 
 		return neighbors;
 	}
-	
-	/**
-	 * Calculates the 2-dimensional x-z distance between two points.<br>
-	 * Used instead of 3-D distance so that the heuristic is admissible.
-	 * (Since the cost only considers 2-D movement)
-	 */
-	private double xzDistance(Point p1, Point p2) {
-		return p1.withY(0).distance(p2.withY(0));
-	}
 
+	//TODO why does this exist?
 	@Override
 	public boolean hasGravitySnap() {
 		return true;

@@ -35,7 +35,7 @@ public interface NodeGenerator {
 	 * @return the traversable nodes
 	 */
     @NotNull Collection<PNode> getTraversableNodes(@NotNull PNode currentNode, @NotNull PNode start,
-    		@NotNull Point goal, @NotNull Set<PNode> visited);
+    		@NotNull Point goal, @NotNull Set<Point> visited);
     //TODO when navigableEntity instance is set, repath
     /**
      * @return snap start and end points to the ground

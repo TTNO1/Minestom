@@ -23,14 +23,19 @@ import net.minestom.server.instance.block.Block.Getter;
 
 /**
  * A ground {@linkplain NodeGenerator} that uses the Jump Point Search
- * optimization. This optimization can only be used in a uniform-cost grid.
+ * "optimization". This can only be used in a uniform-cost grid.
  * <p>
  * See <a href=
  * "https://web.archive.org/web/20250101164536/https://users.cecs.anu.edu.au/~dharabor/data/papers/harabor-grastien-aaai11.pdf">
  * D. Harabor and A. Grastien, “Online Graph Pruning for Pathfinding On Grid
  * Maps”, AAAI, vol. 25, no. 1, pp. 1114-1119, Aug. 2011. </a> for details and
  * implementation logic.
+ * 
+ * @deprecate This class is much slower than standard A* because JPS assumes
+ *             that evaluating potential nodes is not expensive; however, it is
+ *             very expensive in Minecraft.
  */
+//@Deprecated
 public class JPSGroundNodeGenerator implements NodeGenerator {
 	
 	private static final ComponentLogger log = ComponentLogger.logger(JPSGroundNodeGenerator.class);
@@ -332,7 +337,7 @@ public class JPSGroundNodeGenerator implements NodeGenerator {
 		} else {
 			finalNeighborsCalledNodes.add(node);
 		}
-		//log.debug(duplicateCalls + " duplicate calls = " + duplicateCalls/finalNeighborsCalledNodes.size() + " of all calls");
+		log.debug(duplicateCalls + " duplicate calls = " + duplicateCalls/finalNeighborsCalledNodes.size() + " of all calls");
 		
 		// At most 5 pruned neighbors (leave room in case natural neighbors are added to
 		// list after returned)

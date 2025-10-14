@@ -22,7 +22,6 @@ public class PNode {
 		JUMP,
 		FALL,
 		CLIMB,
-		CLIMB_WALL,
 		SWIM,
 		FLY,
 		REPATH

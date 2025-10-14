@@ -13,131 +13,135 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public final class PathGenerator {
-    private static final Comparator<PNode> pNodeComparator = (s1, s2) -> (int) (((s1.getCost() + s1.getHeuristic()) - (s2.getCost() + s2.getHeuristic())) * 1000);
 
-    public static @NotNull PPath generate(Block.@NotNull Getter getter, @NotNull Pos orgStart, @NotNull Point orgTarget,
-                                          double closeDistance, double maxDistance, double pathVariance,
-                                          @NotNull BoundingBox boundingBox, boolean isOnGround, @NotNull NodeGenerator generator,
-                                          @Nullable Runnable onComplete) {
-        final Point start = (!isOnGround && generator.hasGravitySnap())
-                ? orgStart.withY(generator.gravitySnap(getter, orgStart, boundingBox, 100).orElse(orgStart.y()))
-                : orgStart;
+	private static final Comparator<PNode> pNodeComparator = (s1, s2) -> (int) (((s1.getCost() + s1.getHeuristic()) - (s2.getCost() + s2.getHeuristic())) * 1000);
 
-        final Point target = (generator.hasGravitySnap())
-                ? orgTarget.withY(generator.gravitySnap(getter, orgTarget, boundingBox, 100).orElse(orgTarget.y()))
-                : Pos.fromPoint(orgTarget);
+	public static @NotNull PPath generate(Block.@NotNull Getter getter, @NotNull Pos orgStart, @NotNull Point orgTarget,
+			double closeDistance, double maxDistance, double pathVariance,
+			@NotNull BoundingBox boundingBox, boolean isOnGround, @NotNull NodeGenerator generator,
+			@Nullable Runnable onComplete) {
+		final Point start = (!isOnGround && generator.hasGravitySnap())
+				? orgStart.withY(generator.gravitySnap(getter, orgStart, boundingBox, 100).orElse(orgStart.y()))
+						: orgStart;
 
-        PPath path = new PPath(maxDistance, pathVariance);
-        computePath(getter, start, target, closeDistance, maxDistance, pathVariance, boundingBox, path, generator);
-        return path;
-    }
+		final Point target = (generator.hasGravitySnap())
+				? orgTarget.withY(generator.gravitySnap(getter, orgTarget, boundingBox, 100).orElse(orgTarget.y()))
+						: Pos.fromPoint(orgTarget);
 
-    private static PNode buildRepathNode(PNode parent) {
-        return new PNode(0, 0, 0, 0, 0, PNode.Type.REPATH, parent);
-    }
+		PPath path = new PPath(maxDistance, pathVariance);
+		computePath(getter, start, target, closeDistance, maxDistance, pathVariance, boundingBox, path, generator);
+		return path;
+	}
 
-    private static void computePath(Block.Getter getter, Point start, Point target,
-                                    double closeDistance, double maxDistance, double pathVariance,
-                                    BoundingBox boundingBox, PPath path, NodeGenerator generator) {
-        double closestDistance = Double.MAX_VALUE;
-        double straightDistance = generator.heuristic(start, target);
-        int maxSize = (int) Math.floor(maxDistance * 10);
+	private static PNode buildRepathNode(PNode parent) {
+		return new PNode(0, 0, 0, 0, 0, PNode.Type.REPATH, parent);
+	}
 
-        closeDistance = Math.max(0.8, closeDistance);
-        List<PNode> closestFoundNodes = List.of();
+	private static void computePath(Block.Getter getter, Point start, Point target,
+			double closeDistance, double maxDistance, double pathVariance,
+			BoundingBox boundingBox, PPath path, NodeGenerator generator) {
+		
+		double closestDistance = Double.MAX_VALUE;
+		double straightDistance = generator.heuristic(start, target);
+		int maxSize = (int) (maxDistance * 10);
 
-        PNode pStart = new PNode(start, 0, generator.heuristic(start, target), PNode.Type.WALK, null);
+		closeDistance = Math.max(0.8, closeDistance);
+		List<PNode> closestFoundNodes = List.of();
 
-        ObjectHeapPriorityQueue<PNode> open = new ObjectHeapPriorityQueue<>(pNodeComparator);
-        open.enqueue(pStart);
+		PNode pStart = new PNode(start, 0, generator.heuristic(start, target), PNode.Type.WALK, null);
 
-        Set<PNode> closed = new ObjectOpenHashBigSet<>(maxSize);
+		ObjectHeapPriorityQueue<PNode> open = new ObjectHeapPriorityQueue<>(pNodeComparator);
+		open.enqueue(pStart);
 
-        while (!open.isEmpty() && closed.size() < maxSize) {
-            if (path.getState() == PPath.State.TERMINATING) {
-                path.setState(PPath.State.TERMINATED);
-                return;
-            }
+		Set<PNode> closed = new ObjectOpenHashBigSet<>(maxSize);//TODO NO HASHSET OF PNODE
 
-            PNode current = open.dequeue();
+		while (!open.isEmpty() && closed.size() < maxSize) {
+			if (path.getState() == PPath.State.TERMINATING) {
+				path.setState(PPath.State.TERMINATED);
+				return;
+			}
 
-            //var chunk = instance.getChunkAt(current.x(), current.z());
-            //if (chunk == null) continue;
-            //if (!chunk.isLoaded()) continue;
+			PNode current = open.dequeue();
 
-            if (((current.getCost() + current.getHeuristic()) - straightDistance) > pathVariance) continue;
-            if (!withinDistance(current, start, maxDistance)) continue;
-            if (withinDistance(current, target, closeDistance)) {
-                open.enqueue(current);
-                break;
-            }
+			//var chunk = instance.getChunkAt(current.x(), current.z());
+			//if (chunk == null) continue;
+			//if (!chunk.isLoaded()) continue;
 
-            if (current.getHeuristic() < closestDistance) {
-                closestDistance = current.getHeuristic();
-                closestFoundNodes = List.of(current);
-            }
+			if (((current.getCost() + current.getHeuristic()) - straightDistance) > pathVariance) continue;
+			if (!withinDistance(current, start, maxDistance)) continue;
+			if (withinDistance(current, target, closeDistance)) {
+				open.enqueue(current);
+				break;
+			}
 
-            Collection<PNode> found = generator.getTraversableNodes(current, pStart, target, closed);
-            found.forEach(p -> {
-                if (getDistanceSquared(p.x(), p.y(), p.z(), start) <= (maxDistance * maxDistance)) {
-                    open.enqueue(p);
-                    closed.add(p);
-                }
-            });
-        }
+			if (current.getHeuristic() < closestDistance) {
+				closestDistance = current.getHeuristic();
+				closestFoundNodes = List.of(current);
+			}
 
-        PNode current = open.isEmpty() ? null : open.dequeue();
+			Collection<PNode> found = generator.getTraversableNodes(current, pStart, target, closed);
+			found.forEach(p -> {
+				if (getDistanceSquared(p.x(), p.y(), p.z(), start) <= (maxDistance * maxDistance)) {
+					open.enqueue(p);
+					closed.add(p);
+				}
+			});
+		}
 
-        if (current == null || !withinDistance(current, target, closeDistance)) {
-            if (closestFoundNodes.isEmpty()) {
-                path.setState(PPath.State.INVALID);
-                return;
-            }
+		PNode current = open.isEmpty() ? null : open.dequeue();
 
-            current = closestFoundNodes.getFirst();
+		if (current == null || !withinDistance(current, target, closeDistance)) {
+			if (closestFoundNodes.isEmpty()) {
+				path.setState(PPath.State.INVALID);
+				return;
+			}
 
-            if (!open.isEmpty()) {
-                current = buildRepathNode(current);
-            }
-        }
+			current = closestFoundNodes.getFirst();
 
-        while (current.getParent() != null) {
-            path.getNodes().add(current);
-            current = current.getParent();
-        }
+			if (!open.isEmpty()) {
+				current = buildRepathNode(current);
+			}
+		}
 
-        Collections.reverse(path.getNodes());
+		while (current.getParent() != null) {
+			path.getNodes().add(current);
+			current = current.getParent();
+		}
 
-        if (path.getCurrentType() == PNode.Type.REPATH) {
-            path.setState(PPath.State.INVALID);
-            path.getNodes().clear();
-            return;
-        }
+		Collections.reverse(path.getNodes());
 
-        if (path.getNodes().isEmpty()) {
-            path.setState(PPath.State.INVALID);
-            return;
-        }
+		if (path.getCurrentType() == PNode.Type.REPATH) {
+			path.setState(PPath.State.INVALID);
+			path.getNodes().clear();
+			return;
+		}
 
-        var lastNode = path.getNodes().getLast();
-        if (getDistanceSquared(lastNode.x(), lastNode.y(), lastNode.z(), target) > (closeDistance * closeDistance)) {
-            path.setState(PPath.State.BEST_EFFORT);
-            return;
-        }
+		if (path.getNodes().isEmpty()) {
+			path.setState(PPath.State.INVALID);
+			return;
+		}
 
-        PNode pEnd = new PNode(target, 0, 0, PNode.Type.WALK, null);
-        path.getNodes().add(pEnd);
-        path.setState(PPath.State.COMPUTED);
-    }
+		var lastNode = path.getNodes().getLast();
+		if (getDistanceSquared(lastNode.x(), lastNode.y(), lastNode.z(), target) > (closeDistance * closeDistance)) {
+			path.setState(PPath.State.BEST_EFFORT);
+			return;
+		}
 
-    private static boolean withinDistance(PNode point, Point target, double closeDistance) {
-        return getDistanceSquared(point.x(), point.y(), point.z(), target) < (closeDistance * closeDistance);
-    }
+		PNode pEnd = new PNode(target, 0, 0, PNode.Type.WALK, null);
+		path.getNodes().add(pEnd);
+		path.setState(PPath.State.COMPUTED);
+		
+	}
 
-    private static double getDistanceSquared(double x, double y, double z, Point target) {
-        double dx = x - target.x();
-        double dy = y - target.y();
-        double dz = z - target.z();
-        return dx * dx + dy * dy + dz * dz;
-    }
+	private static boolean withinDistance(PNode point, Point target, double closeDistance) {
+		return getDistanceSquared(point.x(), point.y(), point.z(), target) < (closeDistance * closeDistance);
+	}
+
+	private static double getDistanceSquared(double x, double y, double z, Point target) {
+		double dx = x - target.x();
+		double dy = y - target.y();
+		double dz = z - target.z();
+		return dx * dx + dy * dy + dz * dz;
+	}
+
 }
